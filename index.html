@@ -44,6 +44,7 @@ label{display:flex;align-items:center;gap:6px;font-size:14px}
 input[type=range]{width:110px;accent-color:#f4bf4f}
 #result{display:none;margin-top:6px}
 #result video{width:100%;border-radius:12px;background:#000}
+#dl{display:block;text-align:center;text-decoration:none;margin-top:10px}
 </style>
 </head>
 <body>
@@ -54,8 +55,10 @@ input[type=range]{width:110px;accent-color:#f4bf4f}
   <button class="primary" id="go">Open camera</button>
   <p id="err" role="alert"></p>
   <div id="result">
-    <p class="sub">Your last take. Press and hold the video to save it, or use the share menu.</p>
+    <p class="sub">Your last take is ready.</p>
     <video id="playback" controls playsinline></video>
+    <a class="primary" id="dl" download="my-video.webm">Download video</a>
+    <button class="ghost" id="share" style="display:none;width:100%;margin-top:8px">Share or save to phone</button>
   </div>
 </main>
 
@@ -70,7 +73,7 @@ input[type=range]{width:110px;accent-color:#f4bf4f}
       <button class="ghost" id="back">Edit script</button>
     </div>
     <div class="row">
-      <label>Speed <input type="range" id="speed" min="10" max="120" value="40" aria-label="Scroll speed"></label>
+      <label>Pace <input type="range" id="speed" min="60" max="220" value="120" aria-label="Words per minute"><span id="wpm">120</span> wpm</label>
       <label>Size <input type="range" id="size" min="22" max="54" value="32" aria-label="Text size"></label>
     </div>
     <div class="row"><button id="rec">Record</button></div>
@@ -81,7 +84,7 @@ input[type=range]{width:110px;accent-color:#f4bf4f}
 (function(){
   var $=function(id){return document.getElementById(id)};
   var setup=$('setup'),stage=$('stage'),cam=$('cam'),prompt=$('prompt'),err=$('err');
-  var stream=null,words=[],spans=[],idx=0,scrolling=false,voiceOn=false,rec=null,chunks=[],last=0,recog=null;
+  var lastFile=null,pos=0,stream=null,words=[],spans=[],idx=0,scrolling=false,voiceOn=false,rec=null,chunks=[],last=0,recog=null;
   try{var s=localStorage.getItem('lenscue-script');if(s)$('script').value=s}catch(e){}
 
   function norm(w){return w.toLowerCase().replace(/[^a-z0-9\u00c0-\u024f]/g,'')}
@@ -117,7 +120,9 @@ input[type=range]{width:110px;accent-color:#f4bf4f}
   function tick(t){
     if(!scrolling)return;
     var dt=(t-last)/1000;last=t;
-    prompt.scrollTop+=Number($('speed').value)*dt;
+    if(Math.abs(prompt.scrollTop-pos)>3)pos=prompt.scrollTop;
+    var pw=(spans[spans.length-1].offsetTop-spans[0].offsetTop)/Math.max(1,words.length-1);
+    pos+=(Number($('speed').value)/60)*pw*dt;prompt.scrollTop=pos;
     // keep the highlighted word roughly in step with the scroll position
     while(idx<spans.length-1&&spans[idx].offsetTop<prompt.scrollTop+24)idx++;
     mark();
@@ -162,6 +167,7 @@ input[type=range]{width:110px;accent-color:#f4bf4f}
   $('play').onclick=function(){setScrolling(!scrolling)};
   $('voice').onclick=function(){setVoice(!voiceOn)};
   $('restart').onclick=function(){idx=0;mark();prompt.scrollTop=0};
+  $('speed').oninput=function(){$('wpm').textContent=this.value};
   $('size').oninput=function(){prompt.style.fontSize=this.value+'px'};
 
   $('rec').onclick=function(){
@@ -173,7 +179,11 @@ input[type=range]{width:110px;accent-color:#f4bf4f}
     rec.onstop=function(){
       b.textContent='Record';b.classList.remove('on');
       var blob=new Blob(chunks,{type:rec.mimeType||'video/webm'});
-      $('playback').src=URL.createObjectURL(blob);$('result').style.display='block';
+      var url=URL.createObjectURL(blob),ext=blob.type.indexOf('mp4')>-1?'mp4':'webm';
+      $('playback').src=url;$('dl').href=url;$('dl').download='my-video.'+ext;
+      lastFile=new File([blob],'my-video.'+ext,{type:blob.type.split(';')[0]});
+      $('share').style.display=(navigator.canShare&&navigator.canShare({files:[lastFile]}))?'block':'none';
+      $('result').style.display='block';
       leave();
     };
     rec.start();b.textContent='Stop';b.classList.add('on');
@@ -186,6 +196,7 @@ input[type=range]{width:110px;accent-color:#f4bf4f}
     stage.style.display='none';setup.style.display='flex';
   }
   $('back').onclick=leave;
+  $('share').onclick=function(){navigator.share({files:[lastFile]}).catch(function(){})};
 })();
 </script>
 </body>
