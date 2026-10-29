@@ -1,0 +1,192 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>LensCue – read your script on camera</title>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Atkinson+Hyperlegible:wght@400;700&display=swap">
+<style>
+:root{--bg:#f5f1fb;--fg:#241838;--mute:#6b5f80;--card:#fff;--line:#d9cfea;--accent:#6a3fd1;--onaccent:#fff;--hl:#f4bf4f;
+box-sizing:border-box;padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px)}
+@media (prefers-color-scheme:dark){:root:not([data-theme="light"]){--bg:#1a1326;--fg:#f1eafc;--mute:#a99dc2;--card:#251b36;--line:#3a2d52;--accent:#a98bff;--onaccent:#1a1326}}
+:root[data-theme="dark"]{--bg:#1a1326;--fg:#f1eafc;--mute:#a99dc2;--card:#251b36;--line:#3a2d52;--accent:#a98bff;--onaccent:#1a1326}
+*{box-sizing:border-box}
+html,body{height:100%;margin:0}
+html{scroll-padding-top:env(safe-area-inset-top,0px)}
+body{background:var(--bg);color:var(--fg);font:17px/1.5 "Atkinson Hyperlegible",system-ui,sans-serif}
+button{font:inherit;cursor:pointer}
+#setup{max-width:640px;margin:0 auto;padding:20px 18px 40px;display:flex;flex-direction:column;gap:14px}
+h1{font-size:28px;margin:8px 0 0;letter-spacing:-.01em}
+p.sub{margin:0;color:var(--mute)}
+textarea{width:100%;min-height:260px;padding:14px;border:1.5px solid var(--line);border-radius:12px;background:var(--card);color:var(--fg);font:inherit;line-height:1.55;resize:vertical}
+textarea:focus-visible,button:focus-visible,input:focus-visible{outline:3px solid var(--accent);outline-offset:2px}
+.primary{background:var(--accent);color:var(--onaccent);border:0;border-radius:12px;padding:14px 18px;font-weight:700;font-size:18px}
+.ghost{background:transparent;color:var(--fg);border:1.5px solid var(--line);border-radius:10px;padding:9px 12px}
+#err{color:#c0392b;min-height:1.2em;margin:0}
+#stage{position:fixed;inset:0;background:#000;display:none}
+#cam{position:absolute;inset:0;width:100%;height:100%;object-fit:cover;transform:scaleX(-1)}
+#prompt{position:absolute;left:0;right:0;top:env(safe-area-inset-top,0px);height:38%;overflow-y:scroll;scrollbar-width:none;
+padding:14px 6% 30vh;background:linear-gradient(rgba(14,9,22,.82),rgba(14,9,22,.62) 80%,rgba(14,9,22,0));color:#fff;font-weight:700;line-height:1.35;text-align:center;-webkit-mask-image:linear-gradient(#000 82%,transparent)}
+#prompt::-webkit-scrollbar{display:none}
+.w{opacity:.45;transition:opacity .15s,color .15s}
+.w.done{opacity:.3}
+.w.now{opacity:1;color:var(--hl)}
+.w.next{opacity:.95}
+#bar{position:absolute;left:0;right:0;bottom:0;padding:12px 12px calc(12px + env(safe-area-inset-bottom,0px));background:linear-gradient(transparent,rgba(14,9,22,.85));color:#fff;display:flex;flex-direction:column;gap:10px}
+.row{display:flex;gap:8px;align-items:center;justify-content:center;flex-wrap:wrap}
+#bar .ghost{color:#fff;border-color:rgba(255,255,255,.4);background:rgba(20,14,30,.55)}
+#bar .ghost[aria-pressed="true"]{background:#fff;color:#241838}
+#rec{background:#e5484d;color:#fff;border:0;border-radius:999px;padding:12px 22px;font-weight:700}
+#rec.on{animation:pulse 1.2s infinite}
+@keyframes pulse{50%{opacity:.6}}
+@media (prefers-reduced-motion:reduce){#rec.on{animation:none}}
+label{display:flex;align-items:center;gap:6px;font-size:14px}
+input[type=range]{width:110px;accent-color:#f4bf4f}
+#result{display:none;margin-top:6px}
+#result video{width:100%;border-radius:12px;background:#000}
+</style>
+</head>
+<body>
+<main id="setup">
+  <h1>LensCue</h1>
+  <p class="sub">Paste your script or talking points. They’ll appear right under your camera while you record.</p>
+  <textarea id="script" aria-label="Your script" placeholder="Hi, I’m Rita. Today I want to show you how I turn messy sales data into a clear story…"></textarea>
+  <button class="primary" id="go">Open camera</button>
+  <p id="err" role="alert"></p>
+  <div id="result">
+    <p class="sub">Your last take. Press and hold the video to save it, or use the share menu.</p>
+    <video id="playback" controls playsinline></video>
+  </div>
+</main>
+
+<section id="stage" aria-label="Recording stage">
+  <video id="cam" autoplay muted playsinline></video>
+  <div id="prompt" aria-live="off"></div>
+  <div id="bar">
+    <div class="row">
+      <button class="ghost" id="play" aria-pressed="false">Scroll</button>
+      <button class="ghost" id="voice" aria-pressed="false">Follow my voice</button>
+      <button class="ghost" id="restart">Restart</button>
+      <button class="ghost" id="back">Edit script</button>
+    </div>
+    <div class="row">
+      <label>Speed <input type="range" id="speed" min="10" max="120" value="40" aria-label="Scroll speed"></label>
+      <label>Size <input type="range" id="size" min="22" max="54" value="32" aria-label="Text size"></label>
+    </div>
+    <div class="row"><button id="rec">Record</button></div>
+  </div>
+</section>
+
+<script>
+(function(){
+  var $=function(id){return document.getElementById(id)};
+  var setup=$('setup'),stage=$('stage'),cam=$('cam'),prompt=$('prompt'),err=$('err');
+  var stream=null,words=[],spans=[],idx=0,scrolling=false,voiceOn=false,rec=null,chunks=[],last=0,recog=null;
+  try{var s=localStorage.getItem('lenscue-script');if(s)$('script').value=s}catch(e){}
+
+  function norm(w){return w.toLowerCase().replace(/[^a-z0-9\u00c0-\u024f]/g,'')}
+
+  function build(){
+    var text=$('script').value.trim();
+    prompt.innerHTML='';words=[];spans=[];idx=0;
+    text.split(/\s+/).forEach(function(w){
+      var sp=document.createElement('span');sp.className='w';sp.textContent=w;
+      prompt.appendChild(sp);prompt.appendChild(document.createTextNode(' '));
+      words.push(norm(w));spans.push(sp);
+    });
+    mark();prompt.scrollTop=0;
+  }
+
+  function mark(){
+    for(var i=0;i<spans.length;i++){
+      spans[i].className='w'+(i<idx?' done':i===idx?' now':i<idx+8?' next':'');
+    }
+  }
+
+  function toWord(smooth){
+    var sp=spans[idx];if(!sp)return;
+    prompt.scrollTo({top:Math.max(0,sp.offsetTop-24),behavior:smooth?'smooth':'auto'});
+  }
+
+  function setScrolling(on){
+    scrolling=on;$('play').setAttribute('aria-pressed',on);
+    $('play').textContent=on?'Pause':'Scroll';
+    if(on){voiceOn&&setVoice(false);last=performance.now();requestAnimationFrame(tick)}
+  }
+
+  function tick(t){
+    if(!scrolling)return;
+    var dt=(t-last)/1000;last=t;
+    prompt.scrollTop+=Number($('speed').value)*dt;
+    // keep the highlighted word roughly in step with the scroll position
+    while(idx<spans.length-1&&spans[idx].offsetTop<prompt.scrollTop+24)idx++;
+    mark();
+    requestAnimationFrame(tick);
+  }
+
+  function setVoice(on){
+    var SR=window.SpeechRecognition||window.webkitSpeechRecognition;
+    if(on&&!SR){err.textContent='';alert('Voice following isn’t supported in this browser. Try Chrome or Safari, or use Scroll.');return}
+    voiceOn=on;$('voice').setAttribute('aria-pressed',on);
+    if(!on){if(recog){recog.onend=null;try{recog.stop()}catch(e){}recog=null}return}
+    setScrolling(false);
+    recog=new SR();recog.continuous=true;recog.interimResults=true;recog.lang=navigator.language||'en-US';
+    recog.onresult=function(ev){
+      var heard=ev.results[ev.results.length-1][0].transcript.split(/\s+/).map(norm).filter(Boolean);
+      var tail=heard.slice(-4);
+      for(var k=0;k<tail.length;k++){
+        for(var j=idx;j<Math.min(words.length,idx+14);j++){
+          if(words[j]&&words[j]===tail[k]){idx=j+1;break}
+        }
+      }
+      if(idx>=words.length)idx=words.length-1;
+      mark();toWord(true);
+    };
+    recog.onend=function(){if(voiceOn){try{recog.start()}catch(e){}}};
+    try{recog.start()}catch(e){}
+  }
+
+  $('go').onclick=function(){
+    err.textContent='';
+    if(!$('script').value.trim()){err.textContent='Add your script first, then open the camera.';return}
+    try{localStorage.setItem('lenscue-script',$('script').value)}catch(e){}
+    if(!navigator.mediaDevices||!navigator.mediaDevices.getUserMedia){err.textContent='This browser can’t open the camera here. Open the page link in Chrome or Safari.';return}
+    navigator.mediaDevices.getUserMedia({video:{facingMode:'user',width:{ideal:1280}},audio:true}).then(function(st){
+      stream=st;cam.srcObject=st;setup.style.display='none';stage.style.display='block';
+      prompt.style.fontSize=$('size').value+'px';build();
+    }).catch(function(){
+      err.textContent='Camera or microphone access was blocked. Allow both in your browser’s site settings, then try again.';
+    });
+  };
+
+  $('play').onclick=function(){setScrolling(!scrolling)};
+  $('voice').onclick=function(){setVoice(!voiceOn)};
+  $('restart').onclick=function(){idx=0;mark();prompt.scrollTop=0};
+  $('size').oninput=function(){prompt.style.fontSize=this.value+'px'};
+
+  $('rec').onclick=function(){
+    var b=$('rec');
+    if(rec&&rec.state==='recording'){rec.stop();return}
+    if(!window.MediaRecorder){alert('Recording isn’t supported in this browser. You can screen-record instead.');return}
+    chunks=[];rec=new MediaRecorder(stream);
+    rec.ondataavailable=function(e){if(e.data.size)chunks.push(e.data)};
+    rec.onstop=function(){
+      b.textContent='Record';b.classList.remove('on');
+      var blob=new Blob(chunks,{type:rec.mimeType||'video/webm'});
+      $('playback').src=URL.createObjectURL(blob);$('result').style.display='block';
+      leave();
+    };
+    rec.start();b.textContent='Stop';b.classList.add('on');
+  };
+
+  function leave(){
+    setScrolling(false);setVoice(false);
+    if(rec&&rec.state==='recording')rec.stop();
+    if(stream){stream.getTracks().forEach(function(t){t.stop()});stream=null}
+    stage.style.display='none';setup.style.display='flex';
+  }
+  $('back').onclick=leave;
+})();
+</script>
+</body>
+</html>
