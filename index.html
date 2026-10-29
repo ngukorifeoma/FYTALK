@@ -49,7 +49,7 @@ input[type=range]{width:110px;accent-color:#f4bf4f}
 </head>
 <body>
 <main id="setup">
-  <h1>LensCue</h1>
+  <h1>LensCue <small style="font-size:13px;font-weight:400;color:var(--mute)">v3</small></h1>
   <p class="sub">Paste your script or talking points. They’ll appear right under your camera while you record.</p>
   <textarea id="script" aria-label="Your script" placeholder="Hi, I’m Rita. Today I want to show you how I turn messy sales data into a clear story…"></textarea>
   <button class="primary" id="go">Open camera</button>
@@ -73,7 +73,7 @@ input[type=range]{width:110px;accent-color:#f4bf4f}
       <button class="ghost" id="back">Edit script</button>
     </div>
     <div class="row">
-      <label>Pace <input type="range" id="speed" min="60" max="220" value="120" aria-label="Words per minute"><span id="wpm">120</span> wpm</label>
+      <label>Pace <input type="range" id="speed" min="40" max="220" value="100" aria-label="Words per minute"><span id="wpm">100</span> wpm</label>
       <label>Size <input type="range" id="size" min="22" max="54" value="32" aria-label="Text size"></label>
     </div>
     <div class="row"><button id="rec">Record</button></div>
@@ -84,7 +84,7 @@ input[type=range]{width:110px;accent-color:#f4bf4f}
 (function(){
   var $=function(id){return document.getElementById(id)};
   var setup=$('setup'),stage=$('stage'),cam=$('cam'),prompt=$('prompt'),err=$('err');
-  var lastFile=null,pos=0,stream=null,words=[],spans=[],idx=0,scrolling=false,voiceOn=false,rec=null,chunks=[],last=0,recog=null;
+  var lastRi=-1,consumed=0,lastFile=null,pos=0,stream=null,words=[],spans=[],idx=0,scrolling=false,voiceOn=false,rec=null,chunks=[],last=0,recog=null;
   try{var s=localStorage.getItem('lenscue-script');if(s)$('script').value=s}catch(e){}
 
   function norm(w){return w.toLowerCase().replace(/[^a-z0-9\u00c0-\u024f]/g,'')}
@@ -137,17 +137,21 @@ input[type=range]{width:110px;accent-color:#f4bf4f}
     setScrolling(false);
     recog=new SR();recog.continuous=true;recog.interimResults=true;recog.lang=navigator.language||'en-US';
     recog.onresult=function(ev){
-      var heard=ev.results[ev.results.length-1][0].transcript.split(/\s+/).map(norm).filter(Boolean);
-      var tail=heard.slice(-4);
-      for(var k=0;k<tail.length;k++){
-        for(var j=idx;j<Math.min(words.length,idx+14);j++){
-          if(words[j]&&words[j]===tail[k]){idx=j+1;break}
+      var ri=ev.results.length-1;
+      var heard=ev.results[ri][0].transcript.split(/\s+/).map(norm).filter(Boolean);
+      if(ri!==lastRi||heard.length<consumed){lastRi=ri;consumed=0}
+      var fresh=heard.slice(consumed);consumed=heard.length;
+      var adv=0;
+      fresh.forEach(function(h){
+        if(adv>=3)return;
+        for(var j=idx;j<Math.min(words.length,idx+4);j++){
+          if(words[j]&&words[j]===h){adv+=j+1-idx;idx=j+1;break}
         }
-      }
+      });
       if(idx>=words.length)idx=words.length-1;
       mark();toWord(true);
     };
-    recog.onend=function(){if(voiceOn){try{recog.start()}catch(e){}}};
+    recog.onend=function(){lastRi=-1;consumed=0;if(voiceOn){try{recog.start()}catch(e){}}};
     try{recog.start()}catch(e){}
   }
 
@@ -166,7 +170,7 @@ input[type=range]{width:110px;accent-color:#f4bf4f}
 
   $('play').onclick=function(){setScrolling(!scrolling)};
   $('voice').onclick=function(){setVoice(!voiceOn)};
-  $('restart').onclick=function(){idx=0;mark();prompt.scrollTop=0};
+  $('restart').onclick=function(){lastRi=-1;consumed=0;idx=0;mark();prompt.scrollTop=0};
   $('speed').oninput=function(){$('wpm').textContent=this.value};
   $('size').oninput=function(){prompt.style.fontSize=this.value+'px'};
 
