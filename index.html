@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
-<title>LensCue – read your script on camera</title>
+<title>FYTALK – read your script on camera</title>
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Atkinson+Hyperlegible:wght@400;700&display=swap">
 <style>
 :root{--bg:#f5f1fb;--fg:#241838;--mute:#6b5f80;--card:#fff;--line:#d9cfea;--accent:#6a3fd1;--onaccent:#fff;--hl:#f4bf4f;
@@ -49,7 +49,7 @@ input[type=range]{width:110px;accent-color:#f4bf4f}
 </head>
 <body>
 <main id="setup">
-  <h1>LensCue <small style="font-size:13px;font-weight:400;color:var(--mute)">v3</small></h1>
+  <h1>FYTALK <small style="font-size:13px;font-weight:400;color:var(--mute)">v4</small></h1>
   <p class="sub">Paste your script or talking points. They’ll appear right under your camera while you record.</p>
   <textarea id="script" aria-label="Your script" placeholder="Hi, I’m Ify. Today I want to show you how I turn messy sales data into a clear story…"></textarea>
   <button class="primary" id="go">Open camera</button>
@@ -85,7 +85,7 @@ input[type=range]{width:110px;accent-color:#f4bf4f}
   var $=function(id){return document.getElementById(id)};
   var setup=$('setup'),stage=$('stage'),cam=$('cam'),prompt=$('prompt'),err=$('err');
   var lastRi=-1,consumed=0,lastFile=null,pos=0,stream=null,words=[],spans=[],idx=0,scrolling=false,voiceOn=false,rec=null,chunks=[],last=0,recog=null;
-  try{var s=localStorage.getItem('lenscue-script');if(s)$('script').value=s}catch(e){}
+  try{var s=localStorage.getItem('FYTALK-script');if(s)$('script').value=s}catch(e){}
 
   function norm(w){return w.toLowerCase().replace(/[^a-z0-9\u00c0-\u024f]/g,'')}
 
@@ -158,7 +158,7 @@ input[type=range]{width:110px;accent-color:#f4bf4f}
   $('go').onclick=function(){
     err.textContent='';
     if(!$('script').value.trim()){err.textContent='Add your script first, then open the camera.';return}
-    try{localStorage.setItem('lenscue-script',$('script').value)}catch(e){}
+    try{localStorage.setItem('FYTALK-script',$('script').value)}catch(e){}
     if(!navigator.mediaDevices||!navigator.mediaDevices.getUserMedia){err.textContent='This browser can’t open the camera here. Open the page link in Chrome or Safari.';return}
     navigator.mediaDevices.getUserMedia({video:{facingMode:'user',width:{ideal:1280}},audio:true}).then(function(st){
       stream=st;cam.srcObject=st;setup.style.display='none';stage.style.display='block';
